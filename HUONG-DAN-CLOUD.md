@@ -175,17 +175,27 @@ echo "VM_IP=$VM_IP"
 **Quan trọng:** ghim `scikit-learn==1.4.2` giống [requirements.txt](requirements.txt). Model
 được pickle bởi 1.4.2; bản khác sẽ làm `joblib.load` cảnh báo lệch phiên bản hoặc lỗi hẳn.
 
+Service chạy trong **venv riêng** `~/venv-serve`. Lý do: self-hosted runner ở mục 8b chạy
+trên cùng máy này, và `pip install -r requirements.txt` của job Train từng đè lên `~/.local`
+làm service mất `boto3` và `sklearn`. Venv riêng thì CI không chạm vào được.
+
+Không cài `pandas` vì `serve.py` không dùng — tiết kiệm dung lượng trên đĩa 8GB.
+
 ```bash
 SSH="ssh -i ~/.ssh/$KEYNAME.pem -o StrictHostKeyChecking=no ubuntu@$VM_IP"
 
-$SSH "sudo apt-get update -qq && sudo apt-get install -y python3-pip && \
-  pip3 install --quiet 'scikit-learn==1.4.2' 'joblib==1.4.2' 'pandas==2.2.2' \
-    'fastapi==0.111.0' 'uvicorn==0.29.0' boto3 && mkdir -p ~/models ~/src && echo DONE"
+$SSH "sudo apt-get update -qq && \
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3-pip python3-venv && \
+  /usr/bin/python3 -m venv ~/venv-serve && ~/venv-serve/bin/pip install --quiet --upgrade pip && \
+  ~/venv-serve/bin/pip install --quiet 'scikit-learn==1.4.2' 'joblib==1.4.2' \
+    'fastapi==0.111.0' 'uvicorn==0.29.0' boto3 && \
+  mkdir -p ~/models ~/src && \
+  ~/venv-serve/bin/python -c 'import sklearn, boto3; print(\"sklearn\", sklearn.__version__)'"
 
 scp -i ~/.ssh/$KEYNAME.pem src/serve.py ubuntu@$VM_IP:~/src/serve.py
 ```
 
-- [ ] Thư viện đã cài, `src/serve.py` đã ở trên EC2
+- [ ] Thư viện đã cài trong `~/venv-serve`, `src/serve.py` đã ở trên EC2
 
 > Mỗi lần sửa `src/serve.py` phải `scp` lại. Pipeline chỉ deploy **model**, không deploy
 > code serving.
@@ -203,9 +213,10 @@ After=network.target
 [Service]
 User=ubuntu
 WorkingDirectory=/home/ubuntu
+Environment=\"HOME=/home/ubuntu\"
 Environment=\"ARTIFACT_BUCKET=$BUCKET\"
 Environment=\"AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION\"
-ExecStart=/usr/bin/python3 /home/ubuntu/src/serve.py
+ExecStart=/home/ubuntu/venv-serve/bin/python /home/ubuntu/src/serve.py
 Restart=always
 RestartSec=5
 
@@ -215,6 +226,7 @@ EOF
 sudo systemctl daemon-reload && sudo systemctl enable income-api"
 ```
 
+`HOME` khai báo tường minh để `os.path.expanduser(\"~/models\")` trong `serve.py` trỏ đúng chỗ.
 Không có `GOOGLE_APPLICATION_CREDENTIALS` hay file key nào — instance profile lo phần xác
 thực. **Chưa `start`**: model chưa có trên S3 cho đến khi pipeline chạy lần đầu.
 
@@ -244,6 +256,40 @@ gh secret list
 Đúng 5 secret như lab yêu cầu.
 
 - [ ] `gh secret list` hiện đủ 5 secret
+
+---
+
+## 8b. Self-hosted runner (bat buoc voi tai khoan nay)
+
+Tai khoan GitHub dang bi khoa vi billing nen runner cua GitHub khong nhan job
+(`account is locked due to a billing issue`). Runner tu host khong tinh phut GitHub
+nen van chay duoc, va tab Actions van hien du 4 job - bang chung nop bai khong doi.
+
+```bash
+RUNNER_VER=$(gh api repos/actions/runner/releases/latest -q '.tag_name' | sed 's/^v//')
+TOKEN=$(gh api -X POST "repos/$REPO/actions/runners/registration-token" -q '.token')
+
+$SSH "mkdir -p ~/actions-runner && cd ~/actions-runner &&   curl -sL -o runner.tar.gz https://github.com/actions/runner/releases/download/v$RUNNER_VER/actions-runner-linux-x64-$RUNNER_VER.tar.gz &&   tar xzf runner.tar.gz && rm runner.tar.gz &&   ./config.sh --unattended --url https://github.com/$REPO --token $TOKEN               --name ec2-lab-runner --labels self-hosted,linux,x64 --replace &&   sudo ./svc.sh install ubuntu && sudo ./svc.sh start"
+
+gh api "repos/$REPO/actions/runners" -q '.runners[] | .name + " status=" + .status'
+```
+
+Ba dieu chinh keo theo, da nam trong `cicd.yml`:
+
+| Van de tren self-hosted | Cach xu ly |
+|---|---|
+| Ubuntu khong co alias `python`, chi co `python3` | Job `quality-gate` dung `python3` |
+| `appleboy/ssh-action` la Docker action, EC2 khong co Docker | Job `release` dung `ssh` truc tiep |
+| `pip install` cua job Train de len `~/.local`, lam service mat `boto3`/`sklearn` | Service chay bang venv rieng `~/venv-serve` (xem muc 7) |
+
+t3.micro chi co 1GB RAM va 8GB dia. Can them swap va don dinh ky:
+
+```bash
+$SSH "sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile &&       sudo mkswap /swapfile && sudo swapon /swapfile &&       echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab"
+$SSH "pip3 cache purge; sudo apt-get clean; df -h /"
+```
+
+- [ ] `gh api .../runners` bao `status=online`
 
 ---
 

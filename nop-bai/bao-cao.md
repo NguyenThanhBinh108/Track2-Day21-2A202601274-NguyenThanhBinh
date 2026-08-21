@@ -52,9 +52,9 @@ cho 0.8301, cả hai đều vượt ngưỡng. Tệ hơn, mô hình luôn trả 
 
 | Khó khăn | Nguyên nhân | Cách giải quyết |
 |---|---|---|
-| `log_model` chiếm khoảng một phần ba thời gian mỗi lần chạy | MLflow suy luận môi trường bằng một subprocess pip | Khai báo `pip_requirements` tường minh: 2.95 xuống 1.84 giây |
-| Ba lần chạy của pytest lẫn vào MLflow UI | `train()` gọi `mlflow.start_run()` nên test cũng ghi vào `mlflow.db` | Thêm `tests/conftest.py` trỏ tracking URI sang thư mục tạm |
-| Test báo `Could not find experiment with ID 0` | `tmp_path_factory` tạo sẵn thư mục rỗng nên MLflow không khởi tạo experiment mặc định | Trỏ tracking URI vào một thư mục con chưa tồn tại |
+| Không job nào chạy được, GitHub báo `account is locked due to a billing issue` | Hạn mức tài khoản GitHub, không liên quan tới code | Dựng self-hosted runner trên chính EC2 (`runs-on: self-hosted`); runner tự host không tính phút GitHub |
+| Sau lần chạy CI đầu, service mất `boto3` và `sklearn`, khởi động lại là crash | Runner và server dùng chung Python; `pip install -r requirements.txt` của job Train đè lên `~/.local` của service | Cô lập service vào venv riêng `~/venv-serve`, systemd trỏ `ExecStart` vào đó |
+| Quality Gate thoát với mã 127 | Ubuntu chỉ có `python3`, không có alias `python` như runner của GitHub | Đổi sang `python3`; job này chỉ dùng thư viện chuẩn nên không cần `setup-python` |
 
 ---
 
