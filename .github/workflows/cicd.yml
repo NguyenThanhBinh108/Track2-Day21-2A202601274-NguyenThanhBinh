@@ -169,16 +169,22 @@ jobs:
           for local_path, key in [
               ("models/model.joblib", os.environ["MODEL_KEY"]),
               ("outputs/report.json", os.environ["REPORT_KEY"]),
+              # [Bonus 3] Bao cao precision/recall chi tiet. Luu len S3 chu khong
+              # chi dua vao artifact cua GitHub, vi quota artifact co the het.
+              ("outputs/detail.txt", "artifacts/current/detail.txt"),
           ]:
               s3.upload_file(local_path, bucket, key)
               print(f"Da upload {local_path} -> s3://{bucket}/{key}")
           PYEOF
 
       - name: Save report as artifact
+        # Quota luu artifact cua GitHub la han muc tai khoan, khong lien quan den
+        # chat luong model. Neu het quota thi chi bo qua buoc nay - ban sao ben
+        # vung cua ca hai file da nam tren S3 o buoc tren.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: report
-          # [Bonus 3] Luu ca bao cao precision/recall chi tiet.
           path: |
             outputs/report.json
             outputs/detail.txt
