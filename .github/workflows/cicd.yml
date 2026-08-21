@@ -211,8 +211,10 @@ jobs:
           F1: ${{ needs.train.outputs.f1 }}
           ACCURACY: ${{ needs.train.outputs.accuracy }}
           PREV_F1: ${{ needs.train.outputs.prev_f1 }}
+        # Dung `python3` chu khong phai `python`: job nay khong can setup-python
+        # (chi dung thu vien chuan), va tren Ubuntu chi co san `python3`.
         run: |
-          python - <<'PYEOF'
+          python3 - <<'PYEOF'
           import os
 
           # Outputs cua GitHub Actions la kieu chuoi -> phai float() truoc khi so sanh.
@@ -263,30 +265,40 @@ jobs:
     steps:
 
       - name: SSH deploy to VM
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            set -e
+        # Dung `ssh` truc tiep thay vi appleboy/ssh-action: action do la Docker
+        # action nen doi hoi Docker tren runner. Ket qua giong het, va bot mot
+        # phu thuoc ben ngoai.
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+        run: |
+          KEY=$(mktemp)
+          trap 'rm -f "$KEY"' EXIT
+          printf '%s\n' "$SERVER_SSH_KEY" > "$KEY"
+          chmod 600 "$KEY"
 
-            # Restart service: serve.py tai lai model.joblib moi nhat tu S3
-            # ngay khi khoi dong, nen restart la du de doi sang model moi.
-            sudo systemctl restart income-api
+          ssh -i "$KEY" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              -o LogLevel=ERROR "$SERVER_USER@$SERVER_HOST" bash -s <<'REMOTE'
+          set -e
 
-            # Cho server san sang. Thu lai nhieu lan thay vi sleep co dinh de
-            # khong that bai oan khi EC2 tai model cham hon binh thuong.
-            for i in $(seq 1 10); do
-              if curl -sf http://localhost:8080/healthz; then
-                echo ""
-                echo "Health check passed sau ${i} lan thu."
-                exit 0
-              fi
-              echo "Lan thu ${i}/10 chua san sang, doi 3 giay..."
-              sleep 3
-            done
+          # Restart service: serve.py tai lai model.joblib moi nhat tu S3
+          # ngay khi khoi dong, nen restart la du de doi sang model moi.
+          sudo systemctl restart income-api
 
-            echo "Health check FAILED. Log gan nhat cua service:"
-            sudo journalctl -u income-api -n 40 --no-pager
-            exit 1
+          # Cho server san sang. Thu lai nhieu lan thay vi sleep co dinh de
+          # khong that bai oan khi EC2 tai model cham hon binh thuong.
+          for i in $(seq 1 10); do
+            if curl -sf http://localhost:8080/healthz; then
+              echo ""
+              echo "Health check passed sau ${i} lan thu."
+              exit 0
+            fi
+            echo "Lan thu ${i}/10 chua san sang, doi 3 giay..."
+            sleep 3
+          done
+
+          echo "Health check FAILED. Log gan nhat cua service:"
+          sudo journalctl -u income-api -n 40 --no-pager
+          exit 1
+          REMOTE
