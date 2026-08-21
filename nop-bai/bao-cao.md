@@ -1,103 +1,82 @@
 # Báo Cáo Lab Day 21 - CI/CD cho AI Systems
 
-<!--
-HƯỚNG DẪN - đọc rồi XÓA TOÀN BỘ các khối chú thích này sau khi điền xong:
-
-  - Giới hạn: KHÔNG QUÁ 1 TRANG A4, tương đương khoảng 450 - 550 từ nội dung.
-  - Chỉ điền vào các chỗ ___ và các ô trong bảng. Không thêm mục mới.
-  - Viết bằng câu hoàn chỉnh, không gạch đầu dòng cụt lủn.
-  - Kiểm tra độ dài sau khi đã xóa hết chú thích:
-        wc -w nop-bai/bao-cao.md
-    và xem trước bản in bằng cách mở file trên GitHub rồi Ctrl+P / Cmd+P.
--->
-
 | | |
 |---|---|
-| Họ và tên | ___ |
-| MSSV | ___ |
+| Họ và tên | Nguyễn Thành Bình |
+| MSSV | 2A202601274 |
 | Lớp / Khóa | K4 |
-| Repo GitHub | https://github.com/___/___ |
+| Repo GitHub | https://github.com/NguyenThanhBinh108/Track2-Day21-2A202601274-NguyenThanhBinh |
 | Ngày nộp | ___ |
 
 ---
 
 ## 1. Bộ Siêu Tham Số Đã Chọn và Lý Do
 
-<!-- Khoảng 120 - 150 từ. Điền kết quả thật từ MLflow UI ở Bước 1, tối thiểu 3 lần chạy. -->
-
 | Lần chạy | n_estimators | learning_rate | max_depth | f1_score | accuracy |
 |---|---|---|---|---|---|
-| 1 | ___ | ___ | ___ | ___ | ___ |
-| 2 | ___ | ___ | ___ | ___ | ___ |
-| 3 | ___ | ___ | ___ | ___ | ___ |
+| 1 | 100 | 0.1 | 3 | 0.7109 | 0.8780 |
+| 2 | 50 | 0.05 | 2 | 0.6051 | 0.8460 |
+| 3 | 200 | 0.1 | 5 | 0.7149 | 0.8740 |
+| 4 | 200 | 0.05 | 3 | 0.7014 | 0.8740 |
+| 5 | 100 | 0.2 | 3 | **0.7290** | **0.8840** |
 
-**Bộ siêu tham số đã chọn:** `n_estimators=___`, `learning_rate=___`, `max_depth=___`.
+**Bộ đã chọn:** `n_estimators=100`, `learning_rate=0.2`, `max_depth=3`.
 
-**Lý do:** ___
-
-<!--
-Trả lời trong phần Lý do:
-  - Vì sao bộ này tốt hơn các bộ còn lại (dựa trên f1_score, không phải accuracy)?
-  - Lần chạy có accuracy cao nhất có trùng với lần có f1_score cao nhất không?
-    Nếu không, điều đó nói lên điều gì?
-  - Bạn quan sát thấy đánh đổi nào giữa n_estimators và learning_rate?
--->
+**Lý do:** Lần 5 đạt `f1_score` cao nhất (0.7290). Lần này cũng có accuracy cao nhất, nhưng
+thứ tự giữa bảng thì hai chỉ số không trùng nhau: lần 3 xếp thứ hai theo F1 (0.7149) lại
+thua lần 1 nếu xét accuracy (0.8740 so với 0.8780). Quan trọng hơn, accuracy gần như không
+phân biệt được các mô hình — chỉ dao động 0.038 (0.8460 đến 0.8840) trong khi F1 dao động
+0.124, gấp hơn ba lần. Về đánh đổi giữa hai tham số: lần 2 với 50 cây và `learning_rate`
+0.05 chưa học đủ (F1 0.6051, dưới ngưỡng). Hạ `learning_rate` xuống 0.05 rồi bù bằng 200
+cây (lần 4) vẫn chỉ đạt 0.7014, thấp hơn lần 1 chỉ dùng 100 cây với `learning_rate` 0.1 —
+tăng số cây không bù đủ cho `learning_rate` thấp trên bộ dữ liệu này.
 
 ---
 
 ## 2. Vì Sao Ngưỡng Chất Lượng Đặt Trên F1 Chứ Không Phải Accuracy
 
-<!-- Khoảng 120 - 150 từ. -->
+Chỉ 24,8% mẫu thuộc lớp thu nhập trên 50K. Mô hình vô dụng luôn trả lời "thu nhập thấp" đạt
+accuracy 0.7520 trên tập holdout của tôi, trong khi F1 lớp dương bằng 0.0000: accuracy cao
+chỉ phản ánh việc đoán đúng lớp đa số. F1 lớp dương là trung bình điều hòa của precision và
+recall tính riêng trên lớp thiểu số, nên chỉ cao khi mô hình vừa tìm ra được người thu nhập
+cao, vừa không gán nhãn bừa.
 
-___
-
-<!--
-Cần nêu được:
-  - Phân bố lớp của tập dữ liệu (tỷ lệ lớp thu nhập > 50K) và hệ quả của nó.
-  - Accuracy của một mô hình luôn trả lời "thu nhập thấp" là bao nhiêu, vì sao con số
-    đó gây hiểu nhầm.
-  - F1 của lớp dương đo điều gì mà accuracy không đo được.
-  - Vì sao KHÔNG dùng average="weighted" hay average="macro" khi gọi f1_score.
--->
+Không dùng `average="weighted"` hay `"macro"` vì cả hai trộn lớp đa số vào kết quả. Đo trên
+lần chạy 2: F1 lớp dương 0.6051 (trượt ngưỡng 0.65) nhưng `macro` cho 0.7547 và `weighted`
+cho 0.8301, cả hai đều vượt ngưỡng. Tệ hơn, mô hình luôn trả lời "thu nhập thấp" vẫn được
+`weighted` F1 là 0.6456. Dùng `average` sẽ vô hiệu hóa quality gate.
 
 ---
 
 ## 3. Khó Khăn Gặp Phải và Cách Giải Quyết
 
-<!-- Nêu 2 - 3 khó khăn thật, mỗi ô một câu ngắn. -->
-
 | Khó khăn | Nguyên nhân | Cách giải quyết |
 |---|---|---|
-| ___ | ___ | ___ |
-| ___ | ___ | ___ |
-| ___ | ___ | ___ |
+| `log_model` chiếm khoảng một phần ba thời gian mỗi lần chạy | MLflow suy luận môi trường bằng một subprocess pip | Khai báo `pip_requirements` tường minh: 2.95 xuống 1.84 giây |
+| Ba lần chạy của pytest lẫn vào MLflow UI | `train()` gọi `mlflow.start_run()` nên test cũng ghi vào `mlflow.db` | Thêm `tests/conftest.py` trỏ tracking URI sang thư mục tạm |
+| Test báo `Could not find experiment with ID 0` | `tmp_path_factory` tạo sẵn thư mục rỗng nên MLflow không khởi tạo experiment mặc định | Trỏ tracking URI vào một thư mục con chưa tồn tại |
 
 ---
 
-## 4. So Sánh Bước 2 và Bước 3 (bắt buộc, 2 - 3 câu)
-
-<!-- Lấy số liệu từ bảng ở mục 3.6 của tasks/buoc-3.md. -->
+## 4. So Sánh Bước 2 và Bước 3
 
 | | f1_score | accuracy |
 |---|---|---|
-| Bước 2 (chỉ `train_batch1`) | ___ | ___ |
-| Bước 3 (thêm `train_batch2`) | ___ | ___ |
+| Bước 2 (`train_batch1`, 22.361 mẫu) | 0.7290 | 0.8840 |
+| Bước 3 (thêm `train_batch2`, 44.722 mẫu) | 0.7330 | 0.8820 |
 
-**Nhận xét:** ___
-
-<!--
-Một câu trả lời trung thực kiểu "f1 giảm 0,01 vì dữ liệu mới cùng phân phối, không mang
-thêm thông tin mới" được đánh giá cao hơn kết luận sai rằng thêm dữ liệu luôn tốt hơn.
--->
+**Nhận xét:** Gấp đôi dữ liệu chỉ làm F1 tăng 0.0040 và accuracy giảm 0.0020, đều nằm trong
+sai số lấy mẫu của holdout 500 mẫu. Hai batch chia ngẫu nhiên từ cùng một nguồn nên cùng
+phân phối (tỷ lệ lớp dương 0.2477 so với 0.2478), dữ liệu mới không mang thêm thông tin mà
+mô hình chưa học được. Giá trị của Bước 3 là chứng minh vòng tự động hóa chạy đúng, không
+phải chỉ số cao hơn.
 
 ---
 
-## 5. Phần Bonus Đã Thực Hiện (nếu có)
+## 5. Phần Bonus Đã Thực Hiện
 
-<!-- Xóa cả mục 5 nếu không làm bonus. Mỗi bonus tối đa 1 dòng. -->
-
-- [ ] Bonus 1 - Tracking MLflow từ xa với DagsHub: ___
-- [ ] Bonus 2 - Điều chỉnh ngưỡng quyết định: ___
-- [ ] Bonus 3 - Báo cáo precision / recall tự động: ___
-- [ ] Bonus 4 - Hoàn trả về phiên bản trước: ___
-- [ ] Bonus 5 - Cảnh báo lệch lạc dữ liệu: ___
+- [ ] Bonus 1 - DagsHub: không thực hiện.
+- [x] Bonus 2 - `scan_threshold()` quét 0.10 đến 0.90: ngưỡng 0.30 cho F1 0.7519, so với 0.7290 tại ngưỡng mặc định 0.50.
+- [x] Bonus 3 - `write_detail_report()` ghi `outputs/detail.txt` và upload cùng `report.json`. Mô hình bỏ sót 46 người thu nhập cao (recall 0.6290) nhưng chỉ gán nhầm 12 người; bỏ sót là sai lầm tốn kém hơn.
+- [x] Bonus 4 - Quality gate tải `artifacts/current/report.json` của model đang chạy và chặn triển khai nếu F1 mới giảm quá 0.02.
+- [x] Bonus 5 - `check_drift()` cảnh báo khi tỷ lệ lớp dương lệch quá 5 điểm phần trăm so với 24,8%, và ghi tỷ lệ này vào `report.json`.

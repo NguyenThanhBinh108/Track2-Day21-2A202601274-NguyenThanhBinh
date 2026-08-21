@@ -1,5 +1,7 @@
-# Sieu tham so cho mo hinh GradientBoostingClassifier
-# Thay doi cac gia tri nay giua cac lan chay de thi nghiem (Buoc 1)
+# Sieu tham so cho mo hinh boosting (Buoc 1: doi gia tri giua cac lan chay)
+# model: "gb" = GradientBoostingClassifier (mac dinh cua lab)
+#        "hist" = HistGradientBoostingClassifier (nhanh hon, xem bao-cao.md)
+model: gb
 n_estimators: 100
-learning_rate: 0.1
+learning_rate: 0.2
 max_depth: 3
